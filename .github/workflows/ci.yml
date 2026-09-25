@@ -8,11 +8,18 @@ on:
 permissions:
   contents: read
 
+# Evidence is pinned to the commit the engineer pushed. On pull requests,
+# github.sha is GitHub's temporary merge commit, so use the PR head instead.
+env:
+  COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.COMMIT_SHA }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -24,6 +31,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: junit-${{ github.sha }}
+          name: junit-${{ env.COMMIT_SHA }}
           path: reports/junit.xml
           if-no-files-found: error

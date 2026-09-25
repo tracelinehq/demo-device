@@ -41,7 +41,7 @@ npm run test:ci    # also writes reports/junit.xml
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every pull request and on every push to `main`. It installs dependencies (`npm ci`), typechecks, runs the tests, and uploads `reports/junit.xml` as the artifact `junit-<commit sha>`. The upload runs even when tests fail.
+`.github/workflows/ci.yml` runs on every pull request and on every push to `main`. It installs dependencies (`npm ci`), typechecks, runs the tests, and uploads `reports/junit.xml` as the artifact `junit-<commit sha>`. The upload runs even when tests fail. On pull requests, both the checked-out code and the artifact name use the PR head commit (`github.event.pull_request.head.sha`), not GitHub's temporary merge commit. That way the evidence is pinned to the commit the engineer pushed.
 
 ## Test ↔ requirement / risk-control mapping
 
