@@ -4,7 +4,7 @@ import { heparinProfile } from './fixtures.js';
 
 // RCM-08 (RISK-31): therapy profile integrity verified before commit.
 describe('RCM-08 Therapy profile integrity verified before commit', () => {
-  it('RCM-08: a payload altered after signing (raised bolus ceiling) is rejected', () => {
+  it('RCM-08: a payload altered after export (raised bolus ceiling) is rejected', () => {
     const store = new ConfigurationStore();
     const file = JSON.parse(encodeProfileEnvelope(heparinProfile)) as { payload: string };
     file.payload = file.payload.replace('"bolusCeilingMl":5', '"bolusCeilingMl":50');
