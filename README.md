@@ -75,3 +75,7 @@ How CI results map to Traceline `test_case` records (TC-xx) is decided in D2. Th
 | RCM-07 | Needs SRS-235 v3 (CR-141), which isn't approved yet. |
 | RCM-11 | RISK-22 has no implementing requirement yet (`needs_requirement`). Implementing it would mean inventing one. |
 | CRC-32 on profile import | Proposed in CR-145 (draft). SRS-232 is implemented with a SHA-256 digest instead. |
+
+## Traceline D2 live loop
+
+This note exists only to trigger CI for the Traceline D2 live verification loop (2026-09-26). It changes no code and no test; SRS-233 and RCM-03 are verified by the existing tests.
