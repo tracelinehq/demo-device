@@ -10,8 +10,9 @@
 //   2. digest matches the payload bytes (integrity; RCM-08),
 //   3. payload satisfies the profile schema (RCM-15; the formulary export is SOUP).
 //
-// CRC-32 on import is proposed separately in CR-145 (draft) and isn't
-// implemented here.
+// CR-145 (draft): an envelope may also carry a CRC-32 of the payload, written by
+// pharmacy tooling that predates SHA-256. When present it must match; a mismatch
+// is rejected as an integrity failure before the digest is even consulted.
 
 import { createHash } from 'node:crypto';
 import { DEVICE_MAX_RATE_ML_PER_H } from './rate.js';
@@ -33,6 +34,23 @@ export type ImportRejection = 'malformed_envelope' | 'integrity_mismatch' | 'sch
 export type ImportResult =
   | { readonly committed: true; readonly profile: TherapyProfile }
   | { readonly committed: false; readonly reason: ImportRejection; readonly detail: string };
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+/** CRC-32 (IEEE 802.3) of the UTF-8 bytes, as 8 lowercase hex digits. */
+export function crc32Hex(text: string): string {
+  let crc = 0xffffffff;
+  for (const byte of Buffer.from(text, 'utf8')) crc = CRC32_TABLE[(crc ^ byte) & 0xff]! ^ (crc >>> 8);
+  return ((crc ^ 0xffffffff) >>> 0).toString(16).padStart(8, '0');
+}
 
 export function sha256Hex(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
@@ -100,9 +118,15 @@ export function importProfile(file: string, store: ConfigurationStore): ImportRe
   if (!isRecord(envelope) || envelope['format'] !== PROFILE_FORMAT) {
     return { committed: false, reason: 'malformed_envelope', detail: `expected format ${PROFILE_FORMAT}` };
   }
-  const { payload, sha256 } = envelope;
+  const { payload, sha256, crc32 } = envelope;
   if (typeof payload !== 'string' || typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256)) {
     return { committed: false, reason: 'malformed_envelope', detail: 'payload or sha256 missing' };
+  }
+  if (crc32 !== undefined && (typeof crc32 !== 'string' || !/^[0-9a-f]{8}$/.test(crc32))) {
+    return { committed: false, reason: 'malformed_envelope', detail: 'crc32 must be 8 lowercase hex digits' };
+  }
+  if (crc32 !== undefined && crc32Hex(payload) !== crc32) {
+    return { committed: false, reason: 'integrity_mismatch', detail: 'payload CRC-32 does not match crc32' };
   }
 
   if (sha256Hex(payload) !== sha256) {
