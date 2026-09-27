@@ -13,7 +13,7 @@ describe('RCM-11 Alarm acknowledgement requires cause selection', () => {
     expect(pump.activeAlarms.map((a) => a.condition)).toContain('downstream_occlusion');
     expect(pump.acknowledgeOcclusionAlarm('line_kinked', 16_000).acknowledged).toBe(true);
     expect(pump.activeAlarms.map((a) => a.condition)).not.toContain('downstream_occlusion');
-    expect(pump.eventLog.map((e) => e.cause)).toEqual(['line_kinked']);
+    expect(pump.eventLog).toEqual([{ kind: 'alarm_acknowledged', condition: 'downstream_occlusion', cause: 'line_kinked', atMs: 16_000 }]);
   });
 
   it('RCM-11: acknowledging with no occlusion alarm active changes nothing', () => {

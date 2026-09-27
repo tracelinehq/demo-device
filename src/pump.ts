@@ -2,7 +2,7 @@
 // checks together, and applies the risk-control actions (stop the infusion,
 // raise alarms) that the RCMs call for.
 
-import { OCCLUSION_CAUSES, type Alarm, type AlarmAcknowledgement, type OcclusionCause } from './alarm.js';
+import { OCCLUSION_CAUSES, type Alarm, type DeviceEvent, type OcclusionCause } from './alarm.js';
 import { AirInLineDetector } from './air.js';
 import { checkBatteryReserve } from './battery.js';
 import { validateBolusRequest, type BolusResult } from './bolus.js';
@@ -13,7 +13,10 @@ import { validateRateEntry, type RateEntryResult } from './rate.js';
 export type PumpState = 'off' | 'idle' | 'infusing' | 'stopped';
 export type EntrySource = 'primary_ui' | 'secondary_keypad';
 
-export type PumpRateResult = RateEntryResult | { readonly accepted: false; readonly reason: 'powered_off' };
+export type PumpRateResult = RateEntryResult | { readonly accepted: false; readonly reason: 'powered_off' | 'no_clinician_session' };
+
+/** SRS-235 (v3): a clinician session ends after this long without activity. */
+export const CLINICIAN_SESSION_TIMEOUT_MS = 5 * 60_000;
 export type AcknowledgeResult =
   | { readonly acknowledged: true }
   | { readonly acknowledged: false; readonly reason: 'no_active_alarm' | 'cause_required' };
@@ -24,7 +27,8 @@ export class InfusionPump {
   #rateMlPerH: number | undefined;
   #profile: TherapyProfile | undefined;
   #alarms: Alarm[] = [];
-  #eventLog: AlarmAcknowledgement[] = [];
+  #eventLog: DeviceEvent[] = [];
+  #session: { clinicianId: string; lastActivityMs: number } | undefined;
   #air = new AirInLineDetector();
   #occlusion = new OcclusionDetector();
 
@@ -44,8 +48,8 @@ export class InfusionPump {
     return this.#alarms;
   }
 
-  /** The device event log (SRS-237: acknowledged occlusion alarms and their causes). */
-  get eventLog(): readonly AlarmAcknowledgement[] {
+  /** The device event log: acknowledged occlusion alarms and their causes (SRS-237), refused keypad entries (SRS-235). */
+  get eventLog(): readonly DeviceEvent[] {
     return this.#eventLog;
   }
 
@@ -60,6 +64,36 @@ export class InfusionPump {
   powerOff(): void {
     this.#state = 'off';
     this.#rateMlPerH = undefined;
+    this.#session = undefined;
+  }
+
+  /** A clinician authenticated on the primary UI (SRS-235 v3). */
+  signInClinician(clinicianId: string, nowMs: number): void {
+    if (this.poweredOn) this.#session = { clinicianId, lastActivityMs: nowMs };
+  }
+
+  signOutClinician(): void {
+    this.#session = undefined;
+  }
+
+  /** Whether an authenticated clinician session is active: signed in, and not timed out. */
+  clinicianSessionActive(nowMs: number): boolean {
+    return this.#session !== undefined && nowMs - this.#session.lastActivityMs < CLINICIAN_SESSION_TIMEOUT_MS;
+  }
+
+  /**
+   * SRS-235 (v3), RCM-07 (RISK-31): the secondary keypad accepts a rate entry only while an
+   * authenticated clinician session is active. An entry without one is rejected and logged.
+   */
+  enterRateFromSecondaryKeypad(rateMlPerH: number, nowMs: number): PumpRateResult {
+    if (!this.poweredOn) return { accepted: false, reason: 'powered_off' };
+    if (!this.clinicianSessionActive(nowMs)) {
+      this.#session = undefined;
+      this.#eventLog.push({ kind: 'entry_rejected', source: 'secondary_keypad', reason: 'no_clinician_session', rateMlPerH, atMs: nowMs });
+      return { accepted: false, reason: 'no_clinician_session' };
+    }
+    this.#session = { ...this.#session!, lastActivityMs: nowMs };
+    return this.enterRate(rateMlPerH, 'secondary_keypad');
   }
 
   selectProfile(profile: TherapyProfile): void {

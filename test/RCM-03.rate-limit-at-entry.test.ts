@@ -21,7 +21,8 @@ describe('RCM-03 Infusion rate limited at entry', () => {
 
   it('RCM-03: out-of-range entry on the secondary keypad is rejected and the programmed rate is unchanged', () => {
     const pump = runningPump(100);
-    expect(new SecondaryKeypad(pump).enterRate(1500).accepted).toBe(false);
+    pump.signInClinician('clinician-1', 0);
+    expect(new SecondaryKeypad(pump).enterRate(1500, 1_000)).toEqual({ accepted: false, reason: 'above_device_maximum' });
     expect(pump.rateMlPerH).toBe(100);
   });
 

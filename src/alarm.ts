@@ -22,3 +22,14 @@ export interface AlarmAcknowledgement {
   readonly cause: OcclusionCause;
   readonly atMs: number;
 }
+
+/** SRS-235 (v3): a rate entry the secondary keypad refused because no clinician session was active. */
+export interface RejectedEntry {
+  readonly kind: 'entry_rejected';
+  readonly source: 'secondary_keypad';
+  readonly reason: 'no_clinician_session';
+  readonly rateMlPerH: number;
+  readonly atMs: number;
+}
+
+export type DeviceEvent = AlarmAcknowledgement | RejectedEntry;

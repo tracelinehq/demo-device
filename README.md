@@ -16,7 +16,7 @@ The QMS records (requirements, risks, change requests, signatures) live in Trace
 | `occlusion.ts` | Pressure ≥ 620 mmHg held for 10 s raises a high-priority alarm (within the 15 s bound) | SRS-236 v4 |
 | `battery.ts` | Reserve below 30 min at the current rate raises a medium-priority alarm | SRS-234 v3 |
 | `profile.ts` | Imported therapy profiles are checked (SHA-256 digest, then schema) before they are committed | SRS-232 v2 |
-| `keypad.ts` | Secondary keypad accepts rate entries while the pump is powered on | SRS-235 v2 |
+| `keypad.ts`, `pump.ts` | Secondary keypad accepts rate entries only during an authenticated clinician session (5 min without activity ends it); entries without one are rejected and logged | SRS-235 v3, RCM-07 |
 | `pump.ts` | Controller that applies the risk-control actions (stop infusion, raise alarms) | RCM-01/03/04/05/06 |
 | `pump.ts`, `alarm.ts` | An occlusion alarm is silenced only after the clinician selects the cause they checked; the cause goes into the device event log | SRS-237 v1, RCM-11 |
 
@@ -25,7 +25,6 @@ The QMS records (requirements, risks, change requests, signatures) live in Trace
 These are staged in Traceline but not approved. Each will arrive as its own PR once it is approved there, so CI evidence is tied to the new requirement version:
 
 - **CR-142, SRS-233 v8:** limit the rate to the active therapy profile's configured maximum at entry (field complaint C-231). Until then, `TherapyProfile.maxRateMlPerH` is carried and schema-checked, but it isn't enforced at rate entry.
-- **CR-141, SRS-235 v3:** the secondary keypad accepts rate entries only during an authenticated clinician session (RCM-07, RISK-31).
 
 ## Running tests locally
 
@@ -57,7 +56,7 @@ How CI results map to Traceline `test_case` records (TC-xx) is decided in D2. Th
 | SRS-232 | RISK-31, RISK-40, TC-90 | `test/SRS-232.profile-integrity.test.ts` | a verified profile is committed to the configuration store · integrity is verified before commit — a failed check leaves the store untouched · a failed import does not replace an already committed profile · files that are not a profile envelope are rejected |
 | SRS-233 | RISK-14, TC-88 | `test/SRS-233.rate-limiting.test.ts` | device maximum is 1200 mL/h · accepts 1200 mL/h (upper bound inclusive) · rejects 1200.1 mL/h as above device maximum · accepts entries across the operating range · rejects entries below the operating range and non-numeric entries |
 | SRS-234 | RISK-17, TC-86 | `test/SRS-234.battery-reserve.test.ts` | medium-priority alarm when reserve falls below 30 minutes · no alarm at 30 minutes of reserve or more · reserve is computed at the current rate |
-| SRS-235 | RISK-31 (no TC) | `test/SRS-235.keypad-entry.test.ts` | secondary keypad accepts a rate entry while the pump is powered on · secondary keypad does not accept entries while the pump is powered off |
+| SRS-235 | RISK-31, TC-106 (v3, CR-141) | `test/SRS-235.keypad-entry.test.ts` | secondary keypad accepts a rate entry during an authenticated clinician session · an entry with no clinician signed in is rejected and logged · an entry after the clinician session timed out is rejected and logged · secondary keypad does not accept entries while the pump is powered off |
 | SRS-237 | RISK-22, TC-115 (CR-147) | `test/SRS-237.occlusion-acknowledgement.test.ts` | an occlusion alarm is not silenced without a selected cause · a cause outside the offered list is refused · the selected cause silences the alarm and is recorded in the device event log |
 | SRS-236 | RISK-12, TC-91 | `test/SRS-236.occlusion.test.ts` | high-priority alarm within 15 s at 620 mmHg · detection bound holds when occlusion begins mid-infusion · no alarm while pressure stays below 620 mmHg · alarm is raised once per occlusion episode |
 | RCM-01 | RISK-09, SRS-230 | `test/RCM-01.air-stops-infusion.test.ts` | infusion stops with a high-priority alarm at 0.5 mL cumulative air · infusion cannot restart while the air-in-line alarm is active |
@@ -65,7 +64,9 @@ How CI results map to Traceline `test_case` records (TC-xx) is decided in D2. Th
 | RCM-04 | RISK-14, SRS-231 | `test/RCM-04.bolus-ceiling-enforced.test.ts` | pump rejects a bolus above the active profile ceiling · pump accepts a bolus within the active profile ceiling · pump rejects any bolus when no therapy profile is active |
 | RCM-05 | RISK-12, SRS-236 | `test/RCM-05.occlusion-alarm.test.ts` | running pump raises a high-priority occlusion alarm within 15 s of 620 mmHg |
 | RCM-06 | RISK-17, SRS-234 | `test/RCM-06.battery-alarm.test.ts` | pump annunciates before the battery runs out, then clears when charge recovers |
+| RCM-07 | RISK-31, SRS-235, TC-117 (CR-141) | `test/RCM-07.keypad-session.test.ts` | after the session times out, the keypad cannot change the running rate · after sign-out, the keypad cannot change the running rate · keypad activity keeps the session alive, and a lapsed session stays closed |
 | RCM-08 | RISK-31, SRS-232 | `test/RCM-08.profile-tamper.test.ts` | a payload altered after export (raised bolus ceiling) is rejected · a single changed byte in the payload is detected |
+| RCM-11 | RISK-22, SRS-237, TC-116 (CR-147) | `test/RCM-11.alarm-ack-cause.test.ts` | a running pump keeps its occlusion alarm until a cause is selected · acknowledging with no occlusion alarm active changes nothing |
 | RCM-15 | RISK-40, SRS-232 | `test/RCM-15.profile-schema.test.ts` | rejects a profile with a missing field · rejects wrong types (numeric fields as strings) · rejects non-positive or non-finite limits · rejects a profile maximum rate above the device maximum · rejects unknown fields · rejects a payload that is not JSON even when its digest is valid |
 
 ¹ **RCM-03 is only partly covered.** Its title reads "limited to *configured* maximum at entry". Its implementing requirement, SRS-233 v7, only sets the 1200 mL/h device maximum. The tests verify that the limit is enforced at entry on both input paths. They don't verify a per-profile maximum, which comes with SRS-233 v8 (CR-142).
