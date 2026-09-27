@@ -18,6 +18,7 @@ The QMS records (requirements, risks, change requests, signatures) live in Trace
 | `profile.ts` | Imported therapy profiles are checked (SHA-256 digest, then schema) before they are committed | SRS-232 v2 |
 | `keypad.ts` | Secondary keypad accepts rate entries while the pump is powered on | SRS-235 v2 |
 | `pump.ts` | Controller that applies the risk-control actions (stop infusion, raise alarms) | RCM-01/03/04/05/06 |
+| `pump.ts`, `alarm.ts` | An occlusion alarm is silenced only after the clinician selects the cause they checked; the cause goes into the device event log | SRS-237 v1, RCM-11 |
 
 ### Pending changes (not implemented yet)
 
@@ -57,6 +58,7 @@ How CI results map to Traceline `test_case` records (TC-xx) is decided in D2. Th
 | SRS-233 | RISK-14, TC-88 | `test/SRS-233.rate-limiting.test.ts` | device maximum is 1200 mL/h · accepts 1200 mL/h (upper bound inclusive) · rejects 1200.1 mL/h as above device maximum · accepts entries across the operating range · rejects entries below the operating range and non-numeric entries |
 | SRS-234 | RISK-17, TC-86 | `test/SRS-234.battery-reserve.test.ts` | medium-priority alarm when reserve falls below 30 minutes · no alarm at 30 minutes of reserve or more · reserve is computed at the current rate |
 | SRS-235 | RISK-31 (no TC) | `test/SRS-235.keypad-entry.test.ts` | secondary keypad accepts a rate entry while the pump is powered on · secondary keypad does not accept entries while the pump is powered off |
+| SRS-237 | RISK-22, TC-115 (CR-147) | `test/SRS-237.occlusion-acknowledgement.test.ts` | an occlusion alarm is not silenced without a selected cause · a cause outside the offered list is refused · the selected cause silences the alarm and is recorded in the device event log |
 | SRS-236 | RISK-12, TC-91 | `test/SRS-236.occlusion.test.ts` | high-priority alarm within 15 s at 620 mmHg · detection bound holds when occlusion begins mid-infusion · no alarm while pressure stays below 620 mmHg · alarm is raised once per occlusion episode |
 | RCM-01 | RISK-09, SRS-230 | `test/RCM-01.air-stops-infusion.test.ts` | infusion stops with a high-priority alarm at 0.5 mL cumulative air · infusion cannot restart while the air-in-line alarm is active |
 | RCM-03 ¹ | RISK-14, SRS-233 | `test/RCM-03.rate-limit-at-entry.test.ts` | out-of-range entry on the primary UI is rejected and the programmed rate is unchanged · out-of-range entry on the secondary keypad is rejected and the programmed rate is unchanged · out-of-range entry is rejected, never clamped to the maximum |

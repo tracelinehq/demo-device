@@ -2,7 +2,7 @@
 // checks together, and applies the risk-control actions (stop the infusion,
 // raise alarms) that the RCMs call for.
 
-import type { Alarm } from './alarm.js';
+import { OCCLUSION_CAUSES, type Alarm, type AlarmAcknowledgement, type OcclusionCause } from './alarm.js';
 import { AirInLineDetector } from './air.js';
 import { checkBatteryReserve } from './battery.js';
 import { validateBolusRequest, type BolusResult } from './bolus.js';
@@ -14,6 +14,9 @@ export type PumpState = 'off' | 'idle' | 'infusing' | 'stopped';
 export type EntrySource = 'primary_ui' | 'secondary_keypad';
 
 export type PumpRateResult = RateEntryResult | { readonly accepted: false; readonly reason: 'powered_off' };
+export type AcknowledgeResult =
+  | { readonly acknowledged: true }
+  | { readonly acknowledged: false; readonly reason: 'no_active_alarm' | 'cause_required' };
 export type PumpBolusResult = BolusResult | { readonly accepted: false; readonly reason: 'no_active_profile' | 'not_infusing' };
 
 export class InfusionPump {
@@ -21,6 +24,7 @@ export class InfusionPump {
   #rateMlPerH: number | undefined;
   #profile: TherapyProfile | undefined;
   #alarms: Alarm[] = [];
+  #eventLog: AlarmAcknowledgement[] = [];
   #air = new AirInLineDetector();
   #occlusion = new OcclusionDetector();
 
@@ -38,6 +42,11 @@ export class InfusionPump {
 
   get activeAlarms(): readonly Alarm[] {
     return this.#alarms;
+  }
+
+  /** The device event log (SRS-237: acknowledged occlusion alarms and their causes). */
+  get eventLog(): readonly AlarmAcknowledgement[] {
+    return this.#eventLog;
   }
 
   get poweredOn(): boolean {
@@ -97,6 +106,18 @@ export class InfusionPump {
     const alarm = checkBatteryReserve(remainingMah, this.#rateMlPerH ?? 0, nowMs);
     if (alarm) this.#raise(alarm);
     else this.#alarms = this.#alarms.filter((a) => a.condition !== 'low_battery_reserve');
+  }
+
+  /**
+   * SRS-237 (v1), RCM-11 (RISK-22): an occlusion alarm is silenced only once the clinician
+   * selects the cause they checked, and the cause is recorded in the device event log.
+   */
+  acknowledgeOcclusionAlarm(cause: OcclusionCause | undefined, nowMs: number): AcknowledgeResult {
+    if (!this.#alarms.some((a) => a.condition === 'downstream_occlusion')) return { acknowledged: false, reason: 'no_active_alarm' };
+    if (cause === undefined || !OCCLUSION_CAUSES.includes(cause)) return { acknowledged: false, reason: 'cause_required' };
+    this.#alarms = this.#alarms.filter((a) => a.condition !== 'downstream_occlusion');
+    this.#eventLog.push({ kind: 'alarm_acknowledged', condition: 'downstream_occlusion', cause, atMs: nowMs });
+    return { acknowledged: true };
   }
 
   /** Clinician has cleared and re-primed the line after an air-in-line alarm. */
