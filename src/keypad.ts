@@ -1,11 +1,11 @@
-// SRS-235 (v2, effective): session-bound keypad entry.
+// SRS-235 (v3, CR-141): session-bound keypad entry.
 //
-// "The secondary keypad shall accept rate entries while the pump is powered on."
+// "The secondary keypad shall accept rate entries only while an authenticated
+// clinician session is active. Entries made without an active session shall be
+// rejected and logged."
 //
-// This is the effective baseline as written. It isn't tied to a clinician
-// session, which is the gap behind complaint C-231 and RISK-31. Requiring an
-// authenticated session (SRS-235 v3, RCM-07) is staged under CR-141 and lands as
-// its own change once approved.
+// Implements RCM-07 (RISK-31). The session check lives in the pump
+// (enterRateFromSecondaryKeypad), so no keypad path can reach enterRate around it.
 
 import type { InfusionPump, PumpRateResult } from './pump.js';
 
@@ -16,7 +16,7 @@ export class SecondaryKeypad {
     this.#pump = pump;
   }
 
-  enterRate(rateMlPerH: number): PumpRateResult {
-    return this.#pump.enterRate(rateMlPerH, 'secondary_keypad');
+  enterRate(rateMlPerH: number, nowMs: number): PumpRateResult {
+    return this.#pump.enterRateFromSecondaryKeypad(rateMlPerH, nowMs);
   }
 }
