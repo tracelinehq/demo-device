@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigurationStore, encodeProfileEnvelope, importProfile } from '../src/index.js';
+import { ConfigurationStore, crc32Hex, encodeProfileEnvelope, importProfile } from '../src/index.js';
 import { heparinProfile } from './fixtures.js';
 
 describe('SRS-232 Therapy profile integrity (v2)', () => {
@@ -32,5 +32,17 @@ describe('SRS-232 Therapy profile integrity (v2)', () => {
     expect(importProfile('not json', store)).toMatchObject({ committed: false, reason: 'malformed_envelope' });
     expect(importProfile(JSON.stringify(heparinProfile), store)).toMatchObject({ committed: false, reason: 'malformed_envelope' });
     expect(store.size).toBe(0);
+  });
+
+  it('SRS-232 (CR-145): a matching CRC-32 is accepted, a wrong one is an integrity failure', () => {
+    const store = new ConfigurationStore();
+    const file = JSON.parse(encodeProfileEnvelope(heparinProfile)) as { payload: string; crc32?: string };
+    expect(crc32Hex('123456789')).toBe('cbf43926');
+    file.crc32 = crc32Hex(file.payload);
+    expect(importProfile(JSON.stringify(file), store).committed).toBe(true);
+    const bad = new ConfigurationStore();
+    file.crc32 = '00000000';
+    expect(importProfile(JSON.stringify(file), bad)).toMatchObject({ committed: false, reason: 'integrity_mismatch' });
+    expect(bad.size).toBe(0);
   });
 });
